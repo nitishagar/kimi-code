@@ -12,7 +12,7 @@ import {
   traceClientEvent,
   traceKeyEvent,
 } from './deps';
-import { dismissToastByKey, onToast, toast, toastReplaceRevision } from './toast';
+import { dismissToastByKey, nextToastKey, onToast, toast, toastReplaceRevision } from './toast';
 import { planAdminBatchToast, undoBatchDirectionOf, type AdminBatchToastPlan } from './adminBatchToast';
 import type { ToastOptions } from '@moonshot-ai/app-ui';
 import { consumeDraftPromotionOnSessionChange, getDraftPromotion } from './draftPromotion';
@@ -3019,7 +3019,6 @@ type AppActionToastInput =
   | { kind: 'adminBatch'; plan: AdminBatchToastPlan }
   | { kind: 'attachmentOpen'; name: string };
 
-let actionToastKey = 0;
 let latestActionToastKey = 0;
 
 onToast((event) => {
@@ -3112,7 +3111,7 @@ function showActionToastWithKey(input: AppActionToastInput, key: number): void {
 }
 
 function showActionToast(input: AppActionToastInput): void {
-  showActionToastWithKey(input, ++actionToastKey);
+  showActionToastWithKey(input, nextToastKey());
 }
 
 async function archiveSessionWithToast(id: string): Promise<void> {
@@ -3154,7 +3153,7 @@ let exportToastInFlight = false;
 async function exportSessionWithToast(id?: string): Promise<void> {
   if (exportToastInFlight) return;
   exportToastInFlight = true;
-  const key = ++actionToastKey;
+  const key = nextToastKey();
   let runningRevision = toastReplaceRevision();
   let runningShown = false;
   const slowTimer = setTimeout(() => {
