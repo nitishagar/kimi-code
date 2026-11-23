@@ -1,5 +1,13 @@
 # kimi-code-app
 
+## 1.4.3
+
+### Patch Changes
+
+- [#5212](https://github.com/MoonshotAI/kimi-code/pull/5212) [`2348f53`](https://github.com/MoonshotAI/kimi-code/commit/2348f531923616e250639bf66dcbf67c169ee4ab) Thanks [@kimi-agent-bot](https://github.com/kimi-agent-bot)! - Fix sessions that could not open after their model became unavailable.
+
+- [#5197](https://github.com/MoonshotAI/kimi-code/pull/5197) [`0438be4`](https://github.com/MoonshotAI/kimi-code/commit/0438be4cc0f1b9509f18747472041b2210162e98) Thanks [@liruifengv](https://github.com/liruifengv)! - Detect plugin MCP OAuth requirements automatically and show the correct authorization state in plugin details.
+
 ## 1.4.2
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @moonshot-ai/kap-server
 
+## 0.3.3
+
+### Patch Changes
+
+- [#5212](https://github.com/MoonshotAI/kimi-code/pull/5212) [`2348f53`](https://github.com/MoonshotAI/kimi-code/commit/2348f531923616e250639bf66dcbf67c169ee4ab) Thanks [@kimi-agent-bot](https://github.com/kimi-agent-bot)! - Fix sessions that could not open after their model became unavailable.
+
 ## 0.3.2
 
 ### Patch Changes
