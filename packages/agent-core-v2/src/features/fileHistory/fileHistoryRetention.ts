@@ -2,8 +2,11 @@ import { dirname, join } from 'pathe';
 
 import { unwrapErrorCause } from '#/_base/errors/errors';
 import { onUnexpectedError } from '#/_base/errors/unexpectedError';
+import { encodeWorkDirKey } from '#/_base/utils/workdir-slug';
+import { LOCAL_ENVIRONMENT_ID } from '#/environment/environment';
 import type { IHostFileSystem } from '#/os/interface/hostFileSystem';
 import type { IAtomicDocumentStore } from '#/persistence/interface/atomicDocumentStore';
+import { sessionWorkDir } from '#/session/workspaceContext/workspaceRoots';
 
 import { FILE_HISTORY_BLOB_PREFIX } from './fileHistory';
 
@@ -20,26 +23,39 @@ interface RetentionDoc {
   readonly sessions: readonly RetentionEntry[];
 }
 
-export interface FileHistoryRetentionInput {
+interface FileHistorySession {
   readonly docs: IAtomicDocumentStore;
-  readonly hostFs: IHostFileSystem;
   readonly workspaceId: string;
-  readonly sessionDir: string;
+  readonly placement: Parameters<typeof sessionWorkDir>[0];
   readonly sessionId: string;
+}
+
+export interface FileHistoryRetentionInput extends FileHistorySession {
+  readonly hostFs: IHostFileSystem;
+  readonly sessionDir: string;
 }
 
 const touchQueues = new Map<string, Promise<void>>();
 
+function listKeyOf({ workspaceId, placement }: FileHistorySession): string {
+  const { environmentId = LOCAL_ENVIRONMENT_ID, environmentCwd } = placement;
+  if (environmentCwd === undefined) return workspaceId;
+  const ownDir = environmentId === LOCAL_ENVIRONMENT_ID ? sessionWorkDir(placement, undefined) : `${environmentId}:${environmentCwd}`;
+  return ownDir === undefined ? workspaceId : `${workspaceId}.${encodeWorkDirKey(ownDir)}`;
+}
+
 export function touchFileHistorySession(input: FileHistoryRetentionInput): Promise<void> {
-  const previous = touchQueues.get(input.workspaceId) ?? Promise.resolve();
-  const run = previous.then(() => applyTouch(input)).catch(onUnexpectedError);
-  touchQueues.set(input.workspaceId, run);
+  const listKey = listKeyOf(input);
+  if (listKey !== input.workspaceId) void dropFileHistorySession({ ...input, placement: {} });
+  const previous = touchQueues.get(listKey) ?? Promise.resolve();
+  const run = previous.then(() => applyTouch(input, listKey)).catch(onUnexpectedError);
+  touchQueues.set(listKey, run);
   return run;
 }
 
-async function applyTouch(input: FileHistoryRetentionInput): Promise<void> {
+async function applyTouch(input: FileHistoryRetentionInput, listKey: string): Promise<void> {
   const doc =
-    (await input.docs.get<RetentionDoc>(RETENTION_DOC_SCOPE, input.workspaceId)) ??
+    (await input.docs.get<RetentionDoc>(RETENTION_DOC_SCOPE, listKey)) ??
     { sessions: [] };
   const sessions = doc.sessions.filter((entry) => entry.id !== input.sessionId);
   sessions.push({ id: input.sessionId, touchedAt: Date.now() });
@@ -52,7 +68,7 @@ async function applyTouch(input: FileHistoryRetentionInput): Promise<void> {
     if (!removed) stuck.push(victim);
   }
   if (stuck.length > 0) sessions.unshift(...stuck);
-  await input.docs.set(RETENTION_DOC_SCOPE, input.workspaceId, { sessions });
+  await input.docs.set(RETENTION_DOC_SCOPE, listKey, { sessions });
 }
 
 function isMissingPathError(error: unknown): boolean {
@@ -83,22 +99,19 @@ async function removeSessionBlobs(hostFs: IHostFileSystem, agentsDir: string): P
   return removed;
 }
 
-export function dropFileHistorySession(input: {
-  readonly docs: IAtomicDocumentStore;
-  readonly workspaceId: string;
-  readonly sessionId: string;
-}): Promise<void> {
-  const previous = touchQueues.get(input.workspaceId) ?? Promise.resolve();
+export function dropFileHistorySession(input: FileHistorySession): Promise<void> {
+  const listKey = listKeyOf(input);
+  const previous = touchQueues.get(listKey) ?? Promise.resolve();
   const run = previous
     .then(async () => {
-      const doc = await input.docs.get<RetentionDoc>(RETENTION_DOC_SCOPE, input.workspaceId);
+      const doc = await input.docs.get<RetentionDoc>(RETENTION_DOC_SCOPE, listKey);
       if (doc === undefined) return;
       const sessions = doc.sessions.filter((entry) => entry.id !== input.sessionId);
       if (sessions.length === doc.sessions.length) return;
-      await input.docs.set(RETENTION_DOC_SCOPE, input.workspaceId, { sessions });
+      await input.docs.set(RETENTION_DOC_SCOPE, listKey, { sessions });
     })
     .catch(onUnexpectedError);
-  touchQueues.set(input.workspaceId, run);
+  touchQueues.set(listKey, run);
   return run;
 }
 
