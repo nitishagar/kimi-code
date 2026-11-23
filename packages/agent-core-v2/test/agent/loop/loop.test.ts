@@ -2,6 +2,7 @@ import { getMaxListeners } from 'node:events';
 
 import { type ToolCall } from '@moonshot-ai/core/llm/message';
 import { emptyUsage } from '@moonshot-ai/core/llm/usage';
+import { say } from '@moonshot-ai/testkit/model';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { IDisposable } from '#/_base/di/lifecycle';
@@ -49,15 +50,19 @@ import {
   createMockProviderRequester,
   providerHttpError,
   sessionService,
+  testkitAgentFixtures,
   wireRecordPersistenceServices,
   type TestAgentContext,
   type TestAgentOptions,
+  type TestkitAgentFixtures,
 } from '../../harness';
 import { stubPluginService } from '../../app/plugin/stubs';
 import { recordingTelemetry, type TelemetryRecord } from '../../app/telemetry/stubs';
 import { submitPromptTurn } from './stubs';
 
 type GenerateFn = NonNullable<TestAgentOptions['generate']>;
+
+const testWithProvider = it.extend<TestkitAgentFixtures>(testkitAgentFixtures());
 
 function trackStepReasons(ctx: TestAgentContext): readonly (string | undefined)[] {
   const reasons: (string | undefined)[] = [];
@@ -1973,22 +1978,18 @@ describe('turn telemetry', () => {
     }
   });
 
-  it.each([
+  testWithProvider.for([
     { feedback: '1', master: undefined, recorded: true },
     { feedback: undefined, master: '1', recorded: true },
     { feedback: '0', master: '1', recorded: false },
-  ])('persists model steps according to feedback=$feedback and master=$master', async ({ feedback, master, recorded }) => {
+  ])('persists model steps according to feedback=$feedback and master=$master', async ({ feedback, master, recorded }, { agent, model }) => {
     vi.stubEnv('KIMI_CODE_EXPERIMENTAL_DESKTOP_FEEDBACK', feedback);
     vi.stubEnv('KIMI_CODE_EXPERIMENTAL_FLAG', master);
-    const local = createTestAgent();
     try {
-      local.mockNextProviderResponse({
-        parts: [{ type: 'text', text: 'Done' }],
-        requestId: 'example-request',
-      });
-      await local.rpc.prompt({ input: [{ type: 'text', text: 'Hello' }] });
-      await local.untilTurnEnd();
-      const record = (await local.persistedWireRecords()).find((entry) => entry.type === 'turn.ended');
+      model.script({ ...say('Done'), headers: { 'x-trace-id': 'example-request' } });
+      await agent.rpc.prompt({ input: [{ type: 'text', text: 'Hello' }] });
+      await agent.untilTurnEnd();
+      const record = (await agent.persistedWireRecords()).find((entry) => entry.type === 'turn.ended');
       expect(record).toMatchObject({ requestId: 'example-request' });
       const modelSteps = [{
         step: 1,
@@ -2001,7 +2002,6 @@ describe('turn telemetry', () => {
       expect(record?.['modelSteps']).toStrictEqual(recorded ? modelSteps : undefined);
     } finally {
       vi.unstubAllEnvs();
-      await local.dispose();
     }
   });
 
